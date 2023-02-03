@@ -20,6 +20,9 @@ import {
 let project;
 let projectDetail;
 
+/**
+ * Makes the sharepoint file data part of `projectDetail` per URL.
+ */
 function injectSharepointData(filePaths, docPaths, spBatchFiles, isFloodgate) {
   spBatchFiles.forEach((spFiles) => {
     if (spFiles && spFiles.responses) {
@@ -56,6 +59,24 @@ async function updateProjectWithDocs(projectDetail) {
   injectSharepointData(filePaths, docPaths, fgSpBatchFiles, true);
 }
 
+async function getProjectFile(url, retryAttempt) {
+  const response = await fetch(url);
+  if (!response.ok && retryAttempt <= MAX_RETRIES) {
+    await getProjectFile(url, retryAttempt + 1);
+  }
+  return response;
+}
+
+/**
+ * Purge project file from cache and reload it to pick-up the latest changes.
+ */
+async function purgeAndReloadProjectFile() {
+  const projectFile = await initProject();
+  await projectFile.purge();
+  await getProjectFile(projectFile.url, 1);
+  window.location.reload();
+}
+
 async function initProject() {
   if (project) return project;
   const config = await getConfig();
@@ -66,22 +87,16 @@ async function initProject() {
 
   // helix API to get the details/status of the file
   const hlxAdminStatusUrl = getHelixAdminApiUrl(urlInfo, config.admin.api.status.baseURI);
-  console.log(`hlxAdminStatusUrl: ${hlxAdminStatusUrl}`);
 
   // get the status of the project file
   const projectFileStatus = await getProjectFileStatus(hlxAdminStatusUrl, urlInfo.sp);
   if (!projectFileStatus || !projectFileStatus?.webPath) {
     throw new Error('Project file does not have valid web path');
   }
-  console.log('projectFileStatus :: ');
-  console.log(projectFileStatus);
 
   const projectPath = projectFileStatus.webPath;
-  console.log(`projectPath: ${projectPath}`);
   const projectUrl = `${urlInfo.origin}${projectPath}`;
-  console.log(`projectUrl: ${projectUrl}`);
   const projectName = projectFileStatus.edit.name;
-  console.log(`projectName: ${projectName}`);
 
   project = {
     url: projectUrl,
@@ -92,6 +107,10 @@ async function initProject() {
     owner: urlInfo.owner,
     repo: urlInfo.repo,
     ref: urlInfo.ref,
+    purge() {
+      const hlxAdminPreviewUrl = getHelixAdminApiUrl(urlInfo, config.admin.api.preview.baseURI);
+      return fetch(`${hlxAdminPreviewUrl}${projectPath}`, { method: 'POST' });
+    },
     async getDetails() {
       const projectFileJson = await readProjectFile(projectUrl);
       if (!projectFileJson) {
@@ -105,30 +124,13 @@ async function initProject() {
         const url = urlRow.URL;
         const docPath = getDocPathFromUrl(url);
         urls.set(url, {
-          doc: {
-            filePath: docPath,
-            url: url,
-            fg: {
-              url: getFloodgateUrl(url),
-            },
-          }
+          doc: { filePath: docPath, url: url, fg: { url: getFloodgateUrl(url), }, }
         });
-        // Add urls data to map
-        if (filePaths.has(docPath)) {
-          filePaths.get(docPath).push(url);
-        } else {
-          filePaths.set(docPath, [url]);
-        }
+        // Add urls data to filePaths map
+        filePaths.has(docPath) ? filePaths.get(docPath).push(url) : filePaths.set(docPath, [url]);
       });
 
-      projectDetail = {
-        url: projectUrl,
-        name: projectName,
-        urls,
-        filePaths,
-      };
-
-      window.projectDetail = projectDetail;
+      projectDetail = { url: projectUrl, name: projectName, urls, filePaths, };
       return projectDetail;
 
     }
@@ -139,4 +141,5 @@ async function initProject() {
 export {
   initProject,
   updateProjectWithDocs,
+  purgeAndReloadProjectFile,
 }
