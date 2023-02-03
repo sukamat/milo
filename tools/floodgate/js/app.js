@@ -18,12 +18,13 @@ function createRow(classValue = 'default') {
   return createTag('tr', { class: `${classValue}` });
 }
 
-function createColumn(innerHtml, classValue = 'default') {
-  const $th = createTag('th', { class: `${classValue}` });
+function createColumn(innerHtml, classValue) {
+  const tag = classValue === 'header' ? 'th' : 'td';
+  const element = document.createElement(tag);
   if (innerHtml) {
-    $th.innerHTML = innerHtml;
+    element.innerHTML = innerHtml;
   }
-  return $th;
+  return element;
 }
 
 function createHeaderColumn(innerHtml) {
