@@ -12,5 +12,6 @@ module.exports = {
   ignorePatterns: [
     '/libs/deps/*',
     '/tools/loc/*',
+    '/tools/floodgate/*',
   ],
 };
