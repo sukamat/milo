@@ -5,15 +5,13 @@ import {
   connect as connectToSP,
   copyFileAndUpdateMetadata,
   getFileMetadata,
-  getFileVersionInfo,
-  getVersionOfFile,
-  saveFileAndUpdateMetadata, updateFile,
+  saveFileAndUpdateMetadata,
 } from './sharepoint.js';
 import { getUrlInfo, loadingON, simulatePreview, stripExtension } from './utils.js';
 
 const hashToContentMap = new Map();
 
-function processMdastV2(nodes) {
+function processMdast(nodes) {
   const arrayWithContentHash = [];
   nodes.forEach((node) => {
     const hash = objectHash.sha1(node);
@@ -50,8 +48,7 @@ async function getProcessedMdastFromPath(path) {
 
 async function getProcessedMdast(mdast) {
   const nodes = mdast.children || [];
-  //return processMdast(nodes);
-  return processMdastV2(nodes);
+  return processMdast(nodes);
 }
 
 async function persistDoc(srcPath, docx, dstPath) {
@@ -73,7 +70,7 @@ async function persist(srcPath, mdast, dstPath) {
   }
 }
 
-function getMergedMdastV2(langstoreNowProcessedMdast, livecopyProcessedMdast) {
+function getMergedMdast(langstoreNowProcessedMdast, livecopyProcessedMdast) {
   const mergedMdast = { type: 'root', children: [] };
 
   function addTrackChangesInfo(author, action, root) {
@@ -135,12 +132,14 @@ function getMergedMdastV2(langstoreNowProcessedMdast, livecopyProcessedMdast) {
   return mergedMdast;
 }
 
-// this logic is apparently from dexter
+// If modified timestamp and rollout timestamp is less than 10seconds for livecopy, return true.
 function noRegionalChanges(fileMetadata) {
   const lastModified = new Date(fileMetadata.Modified);
   const lastRollout = new Date(fileMetadata.Rollout);
   const diffBetweenRolloutAndModification = Math.abs(lastRollout - lastModified) / 1000;
-  return false; //diffBetweenRolloutAndModification < 10;
+  // TODO: temporarily commenting out for the ease of testing
+  // return diffBetweenRolloutAndModification < 10;
+  return false;
 }
 
 async function rollout(file, targetFolders, skipMerge = false) {
@@ -151,12 +150,8 @@ async function rollout(file, targetFolders, skipMerge = false) {
   const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
 
   async function rolloutPerFolder(targetFolder) {
-    // holds MD of the previous version of langstore file
-    // let langstorePrevMd;
-
-    // live copy path of where the file is getting rolled out o
+    // live copy path of where the file is getting rolled out to
     const livecopyFilePath = `${targetFolder}/${fileName}`;
-
     // holds the status of whether rollout was successful
     const status = { success: true, path: livecopyFilePath };
 
@@ -175,7 +170,7 @@ async function rollout(file, targetFolders, skipMerge = false) {
       // get langstore file prev version value from the rolled out live copy file's RolloutVersion value.
       // the RolloutVersion basically gives which version of langstore file was previously rolled out
       const langstorePrevVersion = fileMetadata.RolloutVersion;
-      // get RolloutStatus value - skipped, merged etc.
+      // get RolloutStatus value - eg: 'Merged'
       const previouslyMerged = fileMetadata.RolloutStatus;
 
       // if regional file does not exist, just copy the langstore file to region
@@ -215,7 +210,7 @@ async function rollout(file, targetFolders, skipMerge = false) {
         // get processed data Map for the livecopy file
         const livecopyProcessedMdast = await getProcessedMdast(livecopy);
         // get merged mdast
-        const livecopyMergedMdast = getMergedMdastV2(langstoreNowProcessedMdast, livecopyProcessedMdast);
+        const livecopyMergedMdast = getMergedMdast(langstoreNowProcessedMdast, livecopyProcessedMdast);
         // save the merged livecopy file
         await persist(filePath, livecopyMergedMdast, livecopyFilePath);
         loadingON(`Rollout to ${livecopyFilePath} complete`);
