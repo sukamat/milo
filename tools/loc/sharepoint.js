@@ -48,6 +48,7 @@ async function connect() {
       }
     }
   }
+  console.log(accessToken);
   return connected;
 }
 
